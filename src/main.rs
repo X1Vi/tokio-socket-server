@@ -4,10 +4,10 @@ use std::net::SocketAddr;
 use std::os::unix::thread;
 use std::sync::Arc;
 use std::thread::spawn;
+use tokio::io::{self, AsyncBufReadExt, BufReader};
 use tokio::main;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
 
 static CLIENTS: Lazy<Arc<Mutex<Vec<(TcpStream, SocketAddr)>>>> =
     Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
@@ -37,7 +37,6 @@ async fn check_clients_socket_connection_exists() {
         }
     }
     println!("-------------------------------------");
-
 }
 
 async fn remove_inactive_clients() {
@@ -68,9 +67,20 @@ async fn print_sockets() {
         println!("{:?}", client.1);
     }
     println!("-------------------------------------");
-
 }
 
+async fn broadcast_message(message: String) {
+    let clients = CLIENTS.lock().await;
+    println!("-------------------------------------");
+    for client in clients.iter() {
+        let socket_addr = client.1;
+        match client.0.try_write(message.as_bytes()) {
+            Ok(_) => println!("Message sent to {:?}", socket_addr),
+            Err(e) => println!("Failed to send message to {:?}: {:?}", socket_addr, e),
+        }
+    }
+    println!("-------------------------------------");
+}
 #[main]
 async fn main() {
     let stdin = BufReader::new(tokio::io::stdin());
@@ -86,29 +96,33 @@ async fn main() {
         let input = input.trim();
         if input == "0. print_socket" || input == "0" {
             print_sockets().await;
-        } else if input == "1. check_clients" || input == "1" {
+        } else if input == "check_clients" || input == "1" {
             check_clients_socket_connection_exists().await;
-        }
-        else if input == "2. remove_inactive_clients" || input == "2" {
+        } else if input == "remove_inactive_clients" || input == "2" {
             remove_inactive_clients().await;
-        }
-        else if input == "3. clear_logs" || input == "3" {
+        } else if input == "clear_logs" || input == "3" {
             print!("\x1B[2J\x1B[1;1H"); // ANSI escape code to clear the terminal
-        }
-        else if input == "help" || input == "h" {
+        } else if input.starts_with("broadcast_message ") || input.starts_with("4 ") {
+            if let Some(message) = input.strip_prefix("broadcast_message ") {
+                broadcast_message(message.to_string()).await;
+            } else if let Some(message) = input.strip_prefix("4 ") {
+                broadcast_message(message.to_string()).await;
+            }
+        } else if input == "help" || input == "h" {
             println!("-------------------------------------------------------------------");
-            println!("nc can be used to dummy connect to the server using this command: `nc 127.0.0.1 3000`");
+            println!(
+                "nc can be used to dummy connect to the server using this command: `nc 127.0.0.1 3000`"
+            );
             println!("Available commands:");
-            println!("0. print_socket             - Print all connected client sockets");
-            println!("1. check_clients            - Check if clients are still connected");
-            println!("2. remove_inactive_clients  - Remove disconnected clients");
-            println!("3. clear_logs               - Clear the terminal logs");
-            println!("h, help                     - Show this help message");
+            println!("0. print_socket                   - Print all connected client sockets");
+            println!("1. check_clients                  - Check if clients are still connected");
+            println!("2. remove_inactive_clients        - Remove disconnected clients");
+            println!("3. clear_logs                     - Clear the terminal logs");
+            println!("4. broadcast_message <message>    - Clear the terminal logs");
+            println!("h, help                           - Show this help message");
             println!("-------------------------------------------------------------------");
-
         }
-        println!("Enter command: "); // Re-prompt
-
+        println!("Enter command or h for help: "); // Re-prompt
     }
 
     let _ = run_stream_handle.await;
