@@ -1,16 +1,48 @@
 use core::task;
+use futures_util::lock;
 use once_cell::sync::Lazy;
 use std::net::SocketAddr;
 use std::os::unix::thread;
 use std::sync::Arc;
 use std::thread::spawn;
-use tokio::io::{self, AsyncBufReadExt, BufReader};
+use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::main;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use tokio_rustls::client;
 
 static CLIENTS: Lazy<Arc<Mutex<Vec<(TcpStream, SocketAddr)>>>> =
     Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+
+static CURRENT_CLIENT_SOCKET_ADDR: Lazy<Mutex<Option<SocketAddr>>> = Lazy::new(|| Mutex::new(None));
+
+async fn set_current_client(index: usize) {
+    let clients = CLIENTS.lock().await;
+    if index < clients.len() {
+        if let Some(client) = clients.get(index) {
+            let mut current_client_addr = CURRENT_CLIENT_SOCKET_ADDR.lock().await;
+            *current_client_addr = Some(client.1);
+            println!("Selected client: {:?}", client.1);
+        }
+    } else {
+        println!("Index out of bounds");
+    }
+}
+
+async fn send_command_to_current_client(command: String) {
+    let mut clients = CLIENTS.lock().await;
+    for (tcpstream, socketaddr) in clients.iter_mut() {
+    
+        if *socketaddr == CURRENT_CLIENT_SOCKET_ADDR.lock().await.unwrap() {
+                tcpstream.write(command.as_bytes()).await.unwrap();
+        }
+    }
+}
+
+async fn print_current_client_socket_addr() {
+    let socketaddr = CURRENT_CLIENT_SOCKET_ADDR.lock().await.unwrap();
+    println!("{:?}", socketaddr);
+}
 
 async fn run_stream() {
     let tcp_listener = TcpListener::bind("127.0.0.1:3000")
@@ -63,8 +95,8 @@ async fn remove_inactive_clients() {
 async fn print_sockets() {
     let clients = CLIENTS.lock().await;
     println!("-------------------------------------");
-    for client in clients.iter() {
-        println!("{:?}", client.1);
+    for (index, client) in clients.iter().enumerate() {
+        println!("{}: {:?}", index, client.1);
     }
     println!("-------------------------------------");
 }
@@ -81,7 +113,8 @@ async fn broadcast_message(message: String) {
     }
     println!("-------------------------------------");
 }
-#[main]
+
+#[tokio::main]
 async fn main() {
     let stdin = BufReader::new(tokio::io::stdin());
     let mut lines = stdin.lines();
@@ -108,7 +141,32 @@ async fn main() {
             } else if let Some(message) = input.strip_prefix("4 ") {
                 broadcast_message(message.to_string()).await;
             }
-        } else if input == "help" || input == "h" {
+        } else if input.starts_with("set_current_client ") || input.starts_with("5 ") {
+            if let Some(message) = input.strip_prefix("set_current_client ") {
+                if let Ok(index) = message.parse::<usize>() {
+                    set_current_client(index).await;
+                } else {
+                    println!("Invalid index. Please enter a valid number.");
+                }
+            } else if let Some(message) = input.strip_prefix("5 ") {
+                set_current_client(message.parse::<usize>().unwrap_or_else(|_| {
+                    println!("Invalid index. Please enter a valid number.");
+                    0 // Default to 0 if parsing fails
+                }))
+                .await;
+            }
+        }
+        else if input.starts_with("send_command ") || input.starts_with("6 ") {
+            if let Some(command) = input.strip_prefix("send_command ") {
+            send_command_to_current_client(command.to_string()).await;
+            } else if let Some(command) = input.strip_prefix("6 ") {
+            send_command_to_current_client(command.to_string()).await;
+            }
+        }
+        else if input == "print_current_index" || input == "7" {
+            print_current_client_socket_addr().await;
+        }
+         else if input == "help" || input == "h" {
             println!("-------------------------------------------------------------------");
             println!(
                 "nc can be used to dummy connect to the server using this command: `nc 127.0.0.1 3000`"
@@ -118,7 +176,10 @@ async fn main() {
             println!("1. check_clients                  - Check if clients are still connected");
             println!("2. remove_inactive_clients        - Remove disconnected clients");
             println!("3. clear_logs                     - Clear the terminal logs");
-            println!("4. broadcast_message <message>    - Clear the terminal logs");
+            println!("4. broadcast_message <message>    - Broadcast a message to all clients");
+            println!("5. set_current_client <index>     - Set the current client by index");
+            println!("6. send_command <command>          - Send a command to the current client");
+            println!("7. print_current_index             - Print the current client's socket address");
             println!("h, help                           - Show this help message");
             println!("-------------------------------------------------------------------");
         }
