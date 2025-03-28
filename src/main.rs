@@ -172,8 +172,8 @@ async fn main() {
             println!("3. clear_logs                     - Clear the terminal logs");
             println!("4. broadcast_message <message>    - Broadcast a message to all clients");
             println!("5. set_current_client <index>     - Set the current client by index");
-            println!("6. send_command <command>          - Send a command to the current client");
-            println!("7. print_current_index             - Print the current client's socket address");
+            println!("6. send_command <command>         - Send a command to the current client");
+            println!("7. print_current_index            - Print the current client's socket address");
             println!("h, help                           - Show this help message");
             println!("-------------------------------------------------------------------");
         }
