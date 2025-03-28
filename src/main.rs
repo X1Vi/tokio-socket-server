@@ -1,15 +1,9 @@
-use core::task;
-use futures_util::lock;
 use once_cell::sync::Lazy;
 use std::net::SocketAddr;
-use std::os::unix::thread;
 use std::sync::Arc;
-use std::thread::spawn;
-use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::main;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use tokio_rustls::client;
 
 static CLIENTS: Lazy<Arc<Mutex<Vec<(TcpStream, SocketAddr)>>>> =
     Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
