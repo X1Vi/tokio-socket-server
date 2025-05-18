@@ -26,9 +26,10 @@ async fn set_current_client(index: usize) {
 async fn send_command_to_current_client(command: String) {
     let mut clients = CLIENTS.lock().await;
     for (tcpstream, socketaddr) in clients.iter_mut() {
-    
-        if *socketaddr == CURRENT_CLIENT_SOCKET_ADDR.lock().await.unwrap() {
-                tcpstream.write(command.as_bytes()).await.unwrap();
+        if !CURRENT_CLIENT_SOCKET_ADDR.lock().await.is_none()
+            && *socketaddr == CURRENT_CLIENT_SOCKET_ADDR.lock().await.unwrap()
+        {
+            tcpstream.write(command.as_bytes()).await.unwrap();
         }
     }
 }
@@ -39,10 +40,10 @@ async fn print_current_client_socket_addr() {
 }
 
 async fn run_stream() {
-    let tcp_listener = TcpListener::bind("127.0.0.1:3000")
+    let tcp_listener = TcpListener::bind("127.0.0.1:3001")
         .await
         .expect("Something went wrong");
-    println!("TCP listening at 127.0.0.1:3000");
+    println!("TCP listening at 127.0.0.1:3001");
 
     loop {
         let (stream, addr) = tcp_listener.accept().await.unwrap();
@@ -149,21 +150,18 @@ async fn main() {
                 }))
                 .await;
             }
-        }
-        else if input.starts_with("send_command ") || input.starts_with("6 ") {
+        } else if input.starts_with("send_command ") || input.starts_with("6 ") {
             if let Some(command) = input.strip_prefix("send_command ") {
-            send_command_to_current_client(command.to_string()).await;
+                send_command_to_current_client(command.to_string()).await;
             } else if let Some(command) = input.strip_prefix("6 ") {
-            send_command_to_current_client(command.to_string()).await;
+                send_command_to_current_client(command.to_string()).await;
             }
-        }
-        else if input == "print_current_index" || input == "7" {
+        } else if input == "print_current_index" || input == "7" {
             print_current_client_socket_addr().await;
-        }
-         else if input == "help" || input == "h" {
+        } else if input == "help" || input == "h" {
             println!("-------------------------------------------------------------------");
             println!(
-                "nc can be used to dummy connect to the server using this command: `nc 127.0.0.1 3000`"
+                "nc can be used to dummy connect to the server using this command: `nc 127.0.0.1 3001`"
             );
             println!("Available commands:");
             println!("0. print_socket                   - Print all connected client sockets");
@@ -173,7 +171,9 @@ async fn main() {
             println!("4. broadcast_message <message>    - Broadcast a message to all clients");
             println!("5. set_current_client <index>     - Set the current client by index");
             println!("6. send_command <command>         - Send a command to the current client");
-            println!("7. print_current_index            - Print the current client's socket address");
+            println!(
+                "7. print_current_index            - Print the current client's socket address"
+            );
             println!("h, help                           - Show this help message");
             println!("-------------------------------------------------------------------");
         }
